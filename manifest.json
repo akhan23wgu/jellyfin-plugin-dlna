@@ -1,1 +1,20 @@
-[]
+[
+  {
+    "guid": "a1b27ca4-a2d4-4acd-bda9-d6f6ec42d815",
+    "name": "DLNA (Published URL)",
+    "description": "DLNA with published HTTP URL support; independently maintained fork.",
+    "overview": "DLNA published URL",
+    "owner": "akhan23wgu",
+    "category": "General",
+    "versions": [
+      {
+        "version": "14.0.0.1",
+        "changelog": "Official v14 with published-URL discovery fix; independent plugin identity.",
+        "targetAbi": "12.4.0.0",
+        "sourceUrl": "https://github.com/akhan23wgu/jellyfin-plugin-dlna/releases/download/published-url-v14-r1/dlna-published-url_14.0.0.1.zip",
+        "checksum": "b901b74c1cf053e35057b3f8e1cf4262",
+        "timestamp": "2026-11-09T06:36:42.967804+00:00"
+      }
+    ]
+  }
+]

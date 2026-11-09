@@ -98,7 +98,7 @@ jobs:
 
   publish:
     needs: build
-    if: needs.build.outputs.needed == 'true'
+    if: needs.build.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -106,10 +106,12 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        if: needs.build.outputs.needed == 'true'
         with:
           name: patched-dlna
           path: release-output
       - name: Publish the package before updating the catalog
+        if: needs.build.outputs.needed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -134,4 +136,26 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "Publish patched DLNA catalog entry for $tag"
             git push origin HEAD:master
+          fi
+      - name: Keep the scheduled checker active during quiet release periods
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime,json,pathlib,subprocess,time
+          last=int(subprocess.check_output(['git','log','-1','--format=%ct']))
+          if time.time()-last < 28*24*60*60:
+              print('Recent repository activity is present; no check-in commit needed.')
+          else:
+              pathlib.Path('maintenance/last-upstream-check.json').write_text(json.dumps({
+                  'last_successful_check':datetime.datetime.now(datetime.timezone.utc).isoformat()
+              },indent=2)+'\n')
+          PY
+          if [ -f maintenance/last-upstream-check.json ]; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add maintenance/last-upstream-check.json
+            if ! git diff --cached --quiet; then
+              git commit -m 'Record successful upstream check to keep scheduled maintenance active'
+              git push origin HEAD:master
+            fi
           fi

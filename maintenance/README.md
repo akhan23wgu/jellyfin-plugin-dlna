@@ -37,6 +37,9 @@ stays available. Review the failed Actions run, adapt `apply_patch.py`, incremen
 any change that needs a new package of an already-published upstream release.
 
 GitHub can disable scheduled workflows after 60 days without repository activity.
+A successful check records a small maintenance commit if the repository has had
+no commits for 28 days, helping keep the daily scheduler active during quiet
+upstream release periods. These GITHUB_TOKEN commits do not start recursive runs.
 Check Actions occasionally and re-enable the workflow if GitHub has disabled it.
 Do not enable the archived upstream workflows; this fork uses only its own
 maintenance workflow for publishing.

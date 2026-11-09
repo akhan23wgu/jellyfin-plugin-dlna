@@ -1,0 +1,137 @@
+name: Maintain patched DLNA releases
+
+on:
+  schedule:
+    - cron: '23 9 * * *'
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: 'Optional official release tag, for example v14; blank means latest stable'
+        required: false
+        type: string
+  push:
+    branches: [master]
+    paths:
+      - 'maintenance/**'
+      - '.github/workflows/maintain-dlna.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: maintain-dlna
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      needed: ${{ steps.release.outputs.needed }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Select an official release and check the published feed
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_TAG: ${{ inputs.upstream_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          upstream=$(python3 -c 'import json; print(json.load(open("maintenance/config.json"))["upstream"])')
+          tag="$REQUESTED_TAG"
+          if [ -z "$tag" ]; then tag=$(gh api "repos/$upstream/releases/latest" --jq .tag_name); fi
+          if [[ ! "$tag" =~ ^v?[0-9]+(\.[0-9]+)*$ ]]; then echo 'Unsupported official release tag'; exit 1; fi
+          # Require a published, stable release, including when a tag was supplied manually.
+          gh api "repos/$upstream/releases/tags/$tag" > /tmp/upstream-release.json
+          python3 -c 'import json; r=json.load(open("/tmp/upstream-release.json")); assert not r["draft"] and not r["prerelease"]'
+          echo "upstream_tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "UPSTREAM_TAG=$tag" >> "$GITHUB_ENV"
+          echo "UPSTREAM_REPO=$upstream" >> "$GITHUB_ENV"
+          export UPSTREAM_TAG="$tag"
+          python3 - <<'PY'
+          import json,os,pathlib
+          cfg=json.load(open('maintenance/config.json'))
+          tag=f"published-url-{os.environ['UPSTREAM_TAG']}-r{cfg['patch_revision']}"
+          manifest=json.loads(pathlib.Path('manifest.json').read_text()) if pathlib.Path('manifest.json').exists() else []
+          exists=any('/'+tag+'/' in v['sourceUrl'] for p in manifest if p['guid']==cfg['plugin_guid'] for v in p['versions'])
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f: f.write('needed='+str(not exists).lower()+'\n')
+          PY
+      - name: Check out the selected upstream release
+        if: steps.release.outputs.needed == 'true'
+        run: git clone --depth 1 --branch "$UPSTREAM_TAG" "https://github.com/$UPSTREAM_REPO.git" upstream-source
+      - name: Select the SDK required by that release
+        if: steps.release.outputs.needed == 'true'
+        id: sdk
+        run: |
+          python3 - <<'PY'
+          import os,re,pathlib
+          project=pathlib.Path('upstream-source/src/Jellyfin.Plugin.Dlna/Jellyfin.Plugin.Dlna.csproj').read_text()
+          match=re.search(r'<TargetFramework>net(\d+)\.(\d+)</TargetFramework>',project)
+          if not match: raise SystemExit('Unknown target framework; stopping safely')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f: f.write('version='+match[1]+'.'+match[2]+'.x\n')
+          PY
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        if: steps.release.outputs.needed == 'true'
+        with:
+          dotnet-version: ${{ steps.sdk.outputs.version }}
+      - name: Test patch safety and compatible version retention
+        if: steps.release.outputs.needed == 'true'
+        env:
+          UPSTREAM_SOURCE: upstream-source
+        run: python3 -m unittest discover -s maintenance -p 'test_*.py' -v
+      - name: Apply the patch and build the release
+        if: steps.release.outputs.needed == 'true'
+        run: python3 maintenance/build_release.py upstream-source release-output --upstream-tag "$UPSTREAM_TAG"
+      - name: Upload verified release files
+        if: steps.release.outputs.needed == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: patched-dlna
+          path: |
+            release-output/*.zip
+            release-output/release.json
+            release-output/meta.json
+            release-output/SHA256SUMS
+            release-output/source-patched.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: needs.build.outputs.needed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: patched-dlna
+          path: release-output
+      - name: Publish the package before updating the catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=$(python3 -c 'import json; print(json.load(open("release-output/release.json"))["tag"])')
+          package=$(python3 -c 'import json; print(json.load(open("release-output/release.json"))["package"])')
+          if gh release view "$tag" >/dev/null 2>&1; then
+            # Recover a catalog update interrupted after a release was already published.
+            gh release download "$tag" --pattern release.json --dir existing-release
+            cp existing-release/release.json release-output/release.json
+          else
+            (cd release-output && sha256sum -c SHA256SUMS)
+            gh release create "$tag" "release-output/$package" release-output/release.json \
+              release-output/SHA256SUMS release-output/source-patched.tar.gz \
+              --title "DLNA Published URL: $tag" \
+              --notes 'Official stable DLNA release with the published HTTP URL fix and an independent plugin identity. See maintenance/config.json and the attached source for provenance.'
+          fi
+          python3 maintenance/update_manifest.py manifest.json release-output/release.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add manifest.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Publish patched DLNA catalog entry for $tag"
+            git push origin HEAD:master
+          fi

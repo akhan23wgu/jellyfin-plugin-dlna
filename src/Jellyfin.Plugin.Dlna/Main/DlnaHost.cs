@@ -286,7 +286,10 @@ public sealed class DlnaHost : IHostedService, IDisposable
             var fullService = "urn:schemas-upnp-org:device:MediaServer:1";
 
             // Build the URI from its parts, so that the host is escaped correctly
-            var uri = new UriBuilder("http", intf.Address.ToString(), httpBindPort, descriptorUri);
+            var publishedUrl = Environment.GetEnvironmentVariable("JELLYFIN_PublishedServerUrl");
+            var uri = string.IsNullOrWhiteSpace(publishedUrl)
+                ? new UriBuilder("http", intf.Address.ToString(), httpBindPort, descriptorUri)
+                : new UriBuilder(publishedUrl.TrimEnd('/') + descriptorUri);
 
             _logger.LogInformation("Registering publisher for {ResourceName} on {DeviceAddress} with uri {FullUri}", fullService, intf.Address, uri);
 

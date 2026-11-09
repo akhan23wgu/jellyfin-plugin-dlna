@@ -30,10 +30,10 @@ public class DlnaPlugin : BasePlugin<DlnaPluginConfiguration>, IHasWebPages
     public static DlnaPlugin Instance { get; private set; } = null!;
 
     /// <inheritdoc />
-    public override Guid Id => new("33EBA9CD-7DA1-4720-967F-DD7DAE7B74A1");
+    public override Guid Id => new("a1b27ca4-a2d4-4acd-bda9-d6f6ec42d815");
 
     /// <inheritdoc />
-    public override string Name => "DLNA";
+    public override string Name => "DLNA (Published URL)";
 
     /// <inheritdoc />
     public override string Description => "Use Jellyfin as a DLNA server.";

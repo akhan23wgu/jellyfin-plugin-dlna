@@ -1,5 +1,5 @@
-name: "DLNA"
-guid: "33EBA9CD-7DA1-4720-967F-DD7DAE7B74A1"
+name: "DLNA (Published URL)"
+guid: "a1b27ca4-a2d4-4acd-bda9-d6f6ec42d815"
 imageUrl: "https://repo.jellyfin.org/releases/plugin/images/jellyfin-plugin-dlna.png"
 version: 14
 targetAbi: "12.1.0.0"

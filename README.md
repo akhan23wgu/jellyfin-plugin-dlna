@@ -1,3 +1,11 @@
+# DLNA (Published URL)
+
+Independent fork maintained by akhan23wgu. Advertises a configured HTTP URL in SSDP and automatically builds patched official releases.
+
+See [maintenance instructions and the Jellyfin update feed](maintenance/README.md).
+
+---
+
 <h1 align="center">Jellyfin DLNA Plugin</h1>
 <h3 align="center">Part of the <a href="https://jellyfin.org">Jellyfin Project</a></h3>
 
